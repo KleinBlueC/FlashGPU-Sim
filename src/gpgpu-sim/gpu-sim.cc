@@ -633,11 +633,6 @@ void shader_core_config::reg_options(class OptionParser *opp) {
       "-gpgpu_shmem_per_block (default 0)",
       "0");
   option_parser_register(
-      opp, "-gpgpu_shmem_reserved_per_block", OPT_UINT32,
-      &gpgpu_shmem_reserved_per_block,
-      "Driver-reserved shared memory charged to each CTA for SM occupancy",
-      "0");
-  option_parser_register(
       opp, "-gpgpu_shmem_size", OPT_UINT32, &gpgpu_shmem_size,
       "Size of shared memory per shader core (default 16kB)", "16384");
   option_parser_register(opp, "-gpgpu_shmem_option", OPT_CSTR,
@@ -2820,9 +2815,7 @@ bool shader_core_ctx::occupy_shader_resource_1block(kernel_info_t &k,
 
   const struct gpgpu_ptx_sim_info *kernel_info = ptx_sim_kernel_info(kernel);
 
-  unsigned int block_smem = kernel_info->smem + k.get_dynamic_smem() +
-                            m_config->gpgpu_shmem_reserved_per_block;
-  if (m_occupied_shmem + block_smem > m_config->gpgpu_shmem_size)
+  if (m_occupied_shmem + kernel_info->smem + k.get_dynamic_smem() > m_config->gpgpu_shmem_size)
     return false;
 
   unsigned int used_regs = padded_cta_size * ((kernel_info->regs + 3) & ~3);
@@ -2833,7 +2826,7 @@ bool shader_core_ctx::occupy_shader_resource_1block(kernel_info_t &k,
 
   if (occupy) {
     m_occupied_n_threads += padded_cta_size;
-    m_occupied_shmem += block_smem;
+    m_occupied_shmem += kernel_info->smem + k.get_dynamic_smem();
     m_occupied_regs += (padded_cta_size * ((kernel_info->regs + 3) & ~3));
     m_occupied_ctas++;
 
@@ -2869,9 +2862,7 @@ void shader_core_ctx::release_shader_resource_1block(unsigned hw_ctaid,
 
     const struct gpgpu_ptx_sim_info *kernel_info = ptx_sim_kernel_info(kernel);
 
-    unsigned int total_smem = (unsigned int)kernel_info->smem +
-                              k.get_dynamic_smem() +
-                              m_config->gpgpu_shmem_reserved_per_block;
+    unsigned int total_smem = (unsigned int)kernel_info->smem + k.get_dynamic_smem();
     assert(m_occupied_shmem >= total_smem);
     m_occupied_shmem -= total_smem;
 
